@@ -2,9 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { WinstonLogger } from './logger/logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new WinstonLogger();
+  const app = await NestFactory.create(AppModule, {
+    logger,
+  });
 
   // Global prefix for all routes
   app.setGlobalPrefix('api/v1');
@@ -24,8 +28,8 @@ async function bootstrap() {
   // Swagger configuration
   const config = new DocumentBuilder()
     .setTitle('NestJS Backend Starter')
-    .setDescription('Professional NestJS API with PassportJS, Swagger, and Prisma')
-    .setVersion('1.0')
+    .setDescription('Professional NestJS API with PassportJS, Swagger, Prisma, RBAC, Refresh Tokens, and Rate Limiting')
+    .setVersion('2.0')
     .addBearerAuth()
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management endpoints')
@@ -41,7 +45,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
 
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger documentation available at: http://localhost:${port}/api`);
+  logger.log(`Application is running on: http://localhost:${port}`, 'Bootstrap');
+  logger.log(`Swagger documentation available at: http://localhost:${port}/api`, 'Bootstrap');
 }
 bootstrap();
