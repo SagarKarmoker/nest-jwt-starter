@@ -15,11 +15,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const throttler_1 = require("@nestjs/throttler");
 const auth_service_1 = require("./auth.service");
 const local_auth_guard_1 = require("./guards/local-auth.guard");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 const login_dto_1 = require("./dto/login.dto");
 const register_dto_1 = require("./dto/register.dto");
+const refresh_token_dto_1 = require("./dto/refresh-token.dto");
+const forgot_password_dto_1 = require("./dto/forgot-password.dto");
+const reset_password_dto_1 = require("./dto/reset-password.dto");
 const current_user_decorator_1 = require("./decorators/current-user.decorator");
 let AuthController = class AuthController {
     authService;
@@ -32,6 +36,18 @@ let AuthController = class AuthController {
     async login(req) {
         return this.authService.login(req.user);
     }
+    async refresh(refreshTokenDto) {
+        return this.authService.refreshTokens(refreshTokenDto.refreshToken);
+    }
+    async logout(refreshTokenDto) {
+        return this.authService.logout(refreshTokenDto.refreshToken);
+    }
+    async forgotPassword(forgotPasswordDto) {
+        return this.authService.forgotPassword(forgotPasswordDto.email);
+    }
+    async resetPassword(resetPasswordDto) {
+        return this.authService.resetPassword(resetPasswordDto.token, resetPasswordDto.newPassword);
+    }
     getProfile(user) {
         return user;
     }
@@ -39,6 +55,7 @@ let AuthController = class AuthController {
 exports.AuthController = AuthController;
 __decorate([
     (0, common_1.Post)('register'),
+    (0, throttler_1.Throttle)({ default: { limit: 3, ttl: 300000 } }),
     (0, swagger_1.ApiOperation)({ summary: 'Register a new user' }),
     (0, swagger_1.ApiBody)({ type: register_dto_1.RegisterDto }),
     (0, swagger_1.ApiResponse)({
@@ -47,16 +64,19 @@ __decorate([
         schema: {
             example: {
                 access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                 user: {
                     id: 'uuid',
                     username: 'johndoe',
                     email: 'user@example.com',
+                    role: 'USER',
                 },
             },
         },
     }),
     (0, swagger_1.ApiResponse)({ status: 409, description: 'User already exists' }),
     (0, swagger_1.ApiResponse)({ status: 400, description: 'Bad request / Validation error' }),
+    (0, swagger_1.ApiResponse)({ status: 429, description: 'Too many requests' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [register_dto_1.RegisterDto]),
@@ -65,6 +85,7 @@ __decorate([
 __decorate([
     (0, common_1.UseGuards)(local_auth_guard_1.LocalAuthGuard),
     (0, common_1.Post)('login'),
+    (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 60000 } }),
     (0, swagger_1.ApiOperation)({ summary: 'Login with username and password' }),
     (0, swagger_1.ApiBody)({ type: login_dto_1.LoginDto }),
     (0, swagger_1.ApiResponse)({
@@ -73,20 +94,108 @@ __decorate([
         schema: {
             example: {
                 access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                 user: {
                     id: 'uuid',
                     username: 'johndoe',
                     email: 'user@example.com',
+                    role: 'USER',
                 },
             },
         },
     }),
     (0, swagger_1.ApiResponse)({ status: 401, description: 'Invalid credentials' }),
+    (0, swagger_1.ApiResponse)({ status: 429, description: 'Too many requests' }),
     __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('refresh'),
+    (0, swagger_1.ApiOperation)({ summary: 'Refresh access token using refresh token' }),
+    (0, swagger_1.ApiBody)({ type: refresh_token_dto_1.RefreshTokenDto }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: 'Tokens refreshed successfully',
+        schema: {
+            example: {
+                access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                user: {
+                    id: 'uuid',
+                    username: 'johndoe',
+                    email: 'user@example.com',
+                    role: 'USER',
+                },
+            },
+        },
+    }),
+    (0, swagger_1.ApiResponse)({ status: 401, description: 'Invalid or expired refresh token' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "refresh", null);
+__decorate([
+    (0, common_1.Post)('logout'),
+    (0, swagger_1.ApiOperation)({ summary: 'Logout and revoke refresh token' }),
+    (0, swagger_1.ApiBody)({ type: refresh_token_dto_1.RefreshTokenDto }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: 'Logged out successfully',
+        schema: {
+            example: {
+                message: 'Logged out successfully',
+            },
+        },
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "logout", null);
+__decorate([
+    (0, common_1.Post)('forgot-password'),
+    (0, throttler_1.Throttle)({ default: { limit: 3, ttl: 3600000 } }),
+    (0, swagger_1.ApiOperation)({ summary: 'Request password reset' }),
+    (0, swagger_1.ApiBody)({ type: forgot_password_dto_1.ForgotPasswordDto }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: 'Password reset email sent (if email exists)',
+        schema: {
+            example: {
+                message: 'If the email exists, a password reset link has been sent',
+            },
+        },
+    }),
+    (0, swagger_1.ApiResponse)({ status: 429, description: 'Too many requests' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [forgot_password_dto_1.ForgotPasswordDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "forgotPassword", null);
+__decorate([
+    (0, common_1.Post)('reset-password'),
+    (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 3600000 } }),
+    (0, swagger_1.ApiOperation)({ summary: 'Reset password with token' }),
+    (0, swagger_1.ApiBody)({ type: reset_password_dto_1.ResetPasswordDto }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: 'Password reset successfully',
+        schema: {
+            example: {
+                message: 'Password reset successfully',
+            },
+        },
+    }),
+    (0, swagger_1.ApiResponse)({ status: 400, description: 'Invalid or expired reset token' }),
+    (0, swagger_1.ApiResponse)({ status: 429, description: 'Too many requests' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [reset_password_dto_1.ResetPasswordDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "resetPassword", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Get)('profile'),
@@ -100,6 +209,7 @@ __decorate([
                 id: 'uuid',
                 username: 'johndoe',
                 email: 'user@example.com',
+                role: 'USER',
             },
         },
     }),

@@ -7,7 +7,11 @@ exports.default = () => ({
     },
     jwt: {
         secret: process.env.JWT_SECRET || 'default-secret-change-this',
-        expiresIn: process.env.JWT_EXPIRATION || '1d',
+        expiresIn: process.env.JWT_EXPIRATION || '15m',
+    },
+    refreshToken: {
+        secret: process.env.REFRESH_TOKEN_SECRET || 'default-refresh-secret-change-this',
+        expiresIn: process.env.REFRESH_TOKEN_EXPIRATION || '7d',
     },
 });
 //# sourceMappingURL=configuration.js.map
