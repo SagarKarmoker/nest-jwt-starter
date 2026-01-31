@@ -5,11 +5,13 @@ A production-ready NestJS backend starter template featuring PassportJS authenti
 ## Features
 
 - **Authentication** - PassportJS with Local and JWT strategies
+- **Advanced Auth** - Refresh tokens with rotation and revocation, password reset flow
 - **Role-Based Access Control (RBAC)** - Three role levels (USER, ADMIN, SUPER_ADMIN)
+- **Security** - Rate limiting (Throttler), Helmet (standard security headers), Bcrypt hashing
+- **Logging** - Structured logging with Winston (File & Console transports)
 - **API Documentation** - Interactive Swagger/OpenAPI UI
 - **Database** - Prisma ORM with PostgreSQL
-- **Validation** - class-validator for DTO validation
-- **Security** - Password hashing with bcrypt
+- **Validation** - class-validator for DTO validation & transformation
 - **Type Safety** - Full TypeScript support with strict mode
 - **Professional Structure** - Modular architecture following NestJS best practices
 
@@ -39,9 +41,25 @@ pnpm install
 Copy `.env.example` to `.env` and update with your PostgreSQL credentials:
 
 ```env
+# Database
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+
+# JWT Configuration
 JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
-JWT_EXPIRATION="1d"
+JWT_EXPIRATION="15m"
+
+# Refresh Token Configuration
+REFRESH_TOKEN_SECRET="your-refresh-token-secret-change-this"
+REFRESH_TOKEN_EXPIRATION="7d"
+
+# Rate Limiting
+THROTTLE_TTL=60
+THROTTLE_LIMIT=10
+
+# Logging
+LOG_LEVEL="info"
+
+# Application
 PORT=3000
 NODE_ENV="development"
 ```
@@ -53,7 +71,7 @@ npx prisma migrate dev
 ```
 
 This will:
-- Create the database tables
+- Create the database tables (Users, RefreshTokens, PasswordResetTokens)
 - Generate the Prisma Client with TypeScript types
 
 ### 5. Start the Development Server
@@ -72,11 +90,15 @@ Open your browser and navigate to: **http://localhost:3000/api**
 
 ### Authentication
 
-| Method | Endpoint | Description | Auth Required | Role Required |
-|--------|----------|-------------|---------------|---------------|
-| POST | `/api/v1/auth/register` | Register a new user | No | - |
-| POST | `/api/v1/auth/login` | Login with credentials | No | - |
-| GET | `/api/v1/auth/profile` | Get current user profile | Yes | - |
+| Method | Endpoint | Description | Auth Required | Rate Limit |
+|--------|----------|-------------|---------------|------------|
+| POST | `/api/v1/auth/register` | Register a new user | No | 3/5min |
+| POST | `/api/v1/auth/login` | Login with credentials | No | 5/1min |
+| POST | `/api/v1/auth/refresh` | Get new access token | No | Default |
+| POST | `/api/v1/auth/logout` | Logout (revoke token) | No | Default |
+| POST | `/api/v1/auth/forgot-password`| Request reset email | No | 3/1hr |
+| POST | `/api/v1/auth/reset-password` | Reset password | No | 5/1hr |
+| GET | `/api/v1/auth/profile` | Get current user profile | Yes | Default |
 
 ### Users
 
@@ -104,107 +126,42 @@ Open your browser and navigate to: **http://localhost:3000/api**
    - Delete users
    - Full system access
 
-### Usage Example
+## Logging
 
-**Register as ADMIN:**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@example.com",
-    "username": "adminuser",
-    "password": "SecurePass123!",
-    "role": "ADMIN"
-  }'
-```
-
-**Register regular USER (default):**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "username": "regularuser",
-    "password": "SecurePass123!"
-  }'
-```
-
-**Login and Get Token:**
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "adminuser",
-    "password": "SecurePass123!"
-  }'
-```
-
-**Access Protected Route:**
-```bash
-curl -X GET http://localhost:3000/api/v1/users \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
+Logs are stored in the `logs/` directory:
+- `logs/error.log` - Error level logs
+- `logs/combined.log` - All logs
+- Console - Colored logs for development
 
 ## Project Structure
 
 ```
 src/
 ├── auth/                      # Authentication module
-│   ├── dto/                   # DTOs (Login, Register)
-│   ├── strategies/            # Passport strategies (Local, JWT)
-│   ├── guards/                # Auth guards (JWT, Local, Roles)
-│   ├── decorators/            # Custom decorators (@CurrentUser, @Roles)
+│   ├── dto/                   # DTOs
+│   ├── strategies/            # Passport strategies
+│   ├── guards/                # Auth guards
+│   ├── decorators/            # Custom decorators
 │   ├── enums/                 # Role enum
 │   ├── auth.controller.ts
 │   ├── auth.service.ts
 │   └── auth.module.ts
 ├── users/                     # Users module
-│   ├── dto/                   # CreateUserDto
-│   ├── entities/              # UserEntity
-│   ├── users.controller.ts
-│   ├── users.service.ts
-│   └── users.module.ts
 ├── prisma/                    # Prisma module
-│   ├── prisma.service.ts
-│   └── prisma.module.ts
+├── logger/                    # Winston logger service
+├── common/                    # Shared resources
+│   └── middleware/            # Logger middleware
 ├── config/                    # Configuration
-│   └── configuration.ts
 ├── app.module.ts              # Root module
 └── main.ts                    # Application entry point
 ```
 
 ## Database Schema
 
-```prisma
-enum Role {
-  USER
-  ADMIN
-  SUPER_ADMIN
-}
-
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
-  password  String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-```
-
-## Testing with Swagger
-
-1. Navigate to **http://localhost:3000/api**
-2. Click **"Authorize"** button
-3. Enter: `Bearer YOUR_JWT_TOKEN`
-4. Try different endpoints and see role-based restrictions in action
-
-**Testing Role Restrictions:**
-- Try accessing `/users` with a USER role token - 403 Forbidden
-- Try accessing `/users` with an ADMIN role token - Success
-- Try deleting a user with ADMIN token - 403 Forbidden
-- Try deleting a user with SUPER_ADMIN token - Success
+Prisma schema includes:
+- **User** - Main user entity
+- **RefreshToken** - For maintaining sessions securely
+- **PasswordResetToken** - For secure password recovery
 
 ## Available Scripts
 
@@ -234,69 +191,10 @@ pnpm run test:cov          # Test coverage
 - **Database:** PostgreSQL
 - **ORM:** Prisma
 - **Authentication:** PassportJS (Local & JWT)
-- **Validation:** class-validator, class-transformer
+- **Security:** Helmet, Throttler, Bcrypt
+- **Logging:** Winston
 - **Documentation:** Swagger/OpenAPI
-- **Password Hashing:** bcrypt
 - **Package Manager:** pnpm
-
-## Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/db` |
-| `JWT_SECRET` | Secret key for JWT signing | `your-secret-key` |
-| `JWT_EXPIRATION` | Token expiration time | `1d`, `7d`, `24h` |
-| `PORT` | Application port | `3000` |
-| `NODE_ENV` | Environment mode | `development`, `production` |
-
-## Security Features
-
-- Password hashing with bcrypt (10 rounds)
-- JWT-based authentication
-- Role-based access control
-- Input validation with class-validator
-- CORS enabled
-- DTO validation with whitelist
-- Password exclusion from API responses
-
-## Deployment
-
-### Build for Production
-
-```bash
-pnpm run build
-```
-
-### Run Production Server
-
-```bash
-pnpm run start:prod
-```
-
-### Environment Setup
-
-1. Set `NODE_ENV=production`
-2. Use strong `JWT_SECRET`
-3. Configure production database
-4. Enable HTTPS
-5. Set up environment-specific configurations
-
-## Roadmap
-
-- Add refresh tokens
-- Implement email verification
-- Add password reset functionality
-- Set up Redis for caching
-- Add rate limiting
-- Implement logging with Winston
-- Add unit and E2E tests
-- Set up Docker containerization
-- Configure CI/CD pipeline
-- Add more OAuth providers (Google, GitHub, etc.)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
